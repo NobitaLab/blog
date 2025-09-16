@@ -19,6 +19,7 @@
           type="text"
           placeholder="请输入博客标题"
           class="form-input"
+          :disabled="isEditMode && !canEdit"
         />
         <!-- 解释：
             - v-model 指令将输入框的值与 formData.title 双向绑定
@@ -29,27 +30,28 @@
       
       <div class="form-group">
         <label for="author">作者</label>
-        <input
-          id="author"
-          v-model="formData.author"
-          type="text"
-          placeholder="请输入作者名称"
-          class="form-input"
-        />
+        <div class="input-with-hint">
+          <input
+            id="author"
+            v-model="formData.author"
+            type="text"
+            placeholder="请输入作者名称"
+            class="form-input"
+            :class="{ 'disabled-input': authorInputDisabled }"
+            :disabled="authorInputDisabled || (isEditMode && !canEdit)"
+          />
+          <span v-if="authorInputDisabled" class="input-hint">
+            作者名称已根据您的登录信息自动填充
+          </span>
+        </div>
       </div>
       
       <div class="editor-toolbar">
         <button
           @click="switchEditor('markdown')"
           :class="['editor-btn', { active: editorMode === 'markdown' }]"
+          :disabled="isEditMode && !canEdit"
         >
-          <!-- 解释：
-            - @click是vue的事件绑定指令（简写形式，等价于 v-on:click），用于给按钮绑定 “点击事件”。当按钮被点击时，会执行 switchEditor('markdown') 函数
-            - :class 是 Vue 的动态类绑定指令（简写形式，等价于 v-bind:class），用于根据数据状态动态给元素添加 / 移除 CSS 类。
-            - 这里使用了数组语法（数组中可包含固定类名和动态类对象），固定类名 'editor-btn' 会始终添加，
-            - 而 { active: editorMode === 'markdown' } 会根据 editorMode 的值动态添加或移除 active 类名
-            - 当 editorMode 等于 'markdown' 时，添加 active 类名，否则移除 active 类名
-          -->
           Markdown
         </button>
         <button
@@ -61,6 +63,7 @@
         <button
           @click="switchEditor('split')"
           :class="['editor-btn', { active: editorMode === 'split' }]"
+          :disabled="isEditMode && !canEdit"
         >
           分屏
         </button>
@@ -73,35 +76,25 @@
             placeholder="请输入博客内容（支持Markdown格式）"
             class="markdown-textarea"
             rows="20"
+            :disabled="isEditMode && !canEdit"
           ></textarea>
-          <!-- 解释：
-            - textarea标签：用于多行文本输入
-            - v-model指令：将输入框的值与 formData.content 双向绑定
-            - placeholder属性：指定输入框为空时显示的提示文本
-            - class属性：添加 markdown-textarea 类，用于样式化
-            - rows属性：指定文本区域的行数
-          -->
         </div>
         
         <div v-if="editorMode === 'preview' || editorMode === 'split'" class="preview-container">
           <div class="preview-content" v-html="renderedContent"></div>
-          <!-- 解释：
-            - v-html指令：将渲染后的Markdown内容插入到div中，v-html 是 Vue 提供的用于动态渲染 HTML 内容的指令，
-            - 它的核心作用是：将绑定的数据（字符串）解析为 HTML 标签并渲染到页面中，而不是像 {{ }} 插值语法那样将内容作为纯文本显示。
-          -->
         </div>
       </div>
       
       <div class="form-actions">
-        <button @click="saveBlog" class="save-button">保存</button>
+        <button @click="saveBlog" class="save-button" :disabled="isEditMode && !canEdit">保存</button>
         <router-link to="/" class="cancel-button">取消</router-link>
-        <!-- 解释：
-          - <router-link> 和 <button> 适用场景及渲染场景差异：
-            - <router-link> 是 Vue 提供的组件，用于路由跳转，适用于页面跳转,无额外逻辑场景，渲染为 <a> 标签
-            - <button> 是 HTML 元素，用于触发事件，适用于提交表单、执行操作等需要执行复杂逻辑的操作场景，渲染为 <button> 标签
-        -->
       </div>
-
+    </div>
+    
+    <!-- 权限提示 -->
+    <div v-if="isEditMode && !canEdit && !loading" class="permission-tip">
+      您只能查看这篇博客，没有编辑权限。<br>
+      只有博客作者或管理员才能编辑此博客。
     </div>
   </div>
 </template>
@@ -110,7 +103,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
-import blogApi from '../services/api'
+import blogApi from '../services/api.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,6 +111,11 @@ const isEditMode = ref(false)
 const loading = ref(false)
 const error = ref('')
 const editorMode = ref('split') // markdown, preview, split
+const currentUser = ref(null)
+const isAdmin = ref(false)
+const canEdit = ref(true)
+const blogData = ref(null)
+const authorInputDisabled = ref(false)
 
 // 表单数据
 const formData = ref({
@@ -144,6 +142,36 @@ const switchEditor = (mode) => {
   editorMode.value = mode
 }
 
+// 检查用户认证状态
+const checkUserStatus = async () => {
+  try {
+    const response = await blogApi.getCurrentUser()
+    if (response.data) {
+      currentUser.value = response.data
+      isAdmin.value = response.data.role === 'admin'
+      return true
+    }
+  } catch (err) {
+    console.error('获取用户信息失败:', err)
+  }
+  currentUser.value = null
+  isAdmin.value = false
+  return false
+}
+
+// 检查编辑权限
+const checkEditPermission = () => {
+  if (!blogData.value || !currentUser.value) {
+    return false
+  }
+  // 管理员可以编辑所有博客
+  if (isAdmin.value) {
+    return true
+  }
+  // 普通用户只能编辑自己的博客
+  return blogData.value.author === currentUser.value.username
+}
+
 // 获取博客详情（编辑模式）
 const fetchBlogDetail = async () => {
   const id = route.params.id
@@ -152,24 +180,46 @@ const fetchBlogDetail = async () => {
     loading.value = true
     error.value = ''
     try {
+      // 检查用户认证状态
+      const isAuthenticated = await checkUserStatus()
+      if (!isAuthenticated) {
+        error.value = '请先登录'
+        loading.value = false
+        return
+      }
+      
       // 调用真实API获取博客详情
       const response = await blogApi.getBlogById(id)
+      blogData.value = response.data
       formData.value = {
         title: response.data.title,
         author: response.data.author,
         content: response.data.content
       }
-      formData.value = {
-          title: response.data.title,
-          author: response.data.author,
-          content: response.data.content
-        }
+      
+      // 检查编辑权限
+      canEdit.value = checkEditPermission()
+      if (!canEdit.value) {
+        error.value = '您没有权限编辑这篇博客'
+        return
+      }
+      
+      // 编辑模式下，作者字段应该是只读的
+      authorInputDisabled.value = true
     } catch (err) {
       error.value = '获取博客详情失败'
       console.error('获取博客详情失败:', err)
     } finally {
       loading.value = false
     }
+  } else {
+    // 创建模式，检查用户认证状态
+    checkUserStatus().then(isAuthenticated => {
+      if (isAuthenticated) {
+        formData.value.author = currentUser.value.username
+        authorInputDisabled.value = true
+      }
+    })
   }
 }
 
@@ -184,13 +234,23 @@ const saveBlog = async () => {
     alert('请输入内容')
     return
   }
+  if (!formData.value.author.trim()) {
+    alert('请输入作者名称')
+    return
+  }
+  
+  // 检查是否有权限保存
+  if (isEditMode.value && !canEdit.value) {
+    alert('您没有权限保存这篇博客')
+    return
+  }
   
   loading.value = true
   error.value = ''
   try {
     const data = {
       title: formData.value.title.trim(),
-      author: formData.value.author.trim() || '匿名',
+      author: formData.value.author.trim(),
       content: formData.value.content.trim()
     }
     
@@ -203,12 +263,12 @@ const saveBlog = async () => {
       // 调用真实API创建博客
       const response = await blogApi.createBlog(data)
       alert('博客创建成功')
-      router.push('/')
+      router.push(`/blog/${response.data.id}`)
     }
   } catch (err) {
-    error.value = isEditMode.value ? '更新博客失败' : '创建博客失败'
+    error.value = err.response?.data?.error || (isEditMode.value ? '更新博客失败' : '创建博客失败')
     alert(error.value)
-    console.error(error.value, err)
+    console.error(isEditMode.value ? '更新博客失败:' : '创建博客失败:', err)
   } finally {
     loading.value = false
   }
@@ -264,6 +324,35 @@ h1 {
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 16px;
+}
+
+.input-with-hint {
+  position: relative;
+}
+
+.input-hint {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.disabled-input {
+  background-color: #f5f5f5;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.permission-tip {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  color: #856404;
+  text-align: center;
+  line-height: 1.6;
 }
 
 .form-input:focus {

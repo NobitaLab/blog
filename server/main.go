@@ -11,6 +11,7 @@ import (
 	"blog/server/models"
 	"blog/server/routes"
 	"blog/server/middlewares"
+	"blog/server/utils"
 )
 
 func main() {
@@ -24,13 +25,13 @@ func main() {
 	}
 
 	// 自动迁移数据库表结构
-	err = db.AutoMigrate(&models.Blog{})
+	err = db.AutoMigrate(&models.Blog{}, &models.User{})
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// 添加一些测试数据
-	addTestData(db)
+	// 初始化管理员账户
+	initAdminAccount(db)
 
 	// 创建 Gin 路由器
 	router := gin.Default()
@@ -42,6 +43,7 @@ func main() {
 
 	// 注册路由
 	routes.RegisterBlogRoutes(router, db)
+	routes.RegisterUserRoutes(router, db)
 
 	// 启动服务器
 	server := &http.Server{
@@ -58,6 +60,75 @@ func main() {
 	}
 }
 
+// initAdminAccount 初始化管理员账户
+func initAdminAccount(db *gorm.DB) {
+	// 检查管理员账户是否已存在
+	var admin models.User
+	result := db.Where("username = ?", "admin").First(&admin)
+	if result.Error == nil {
+		// 管理员账户已存在，不需要创建
+		return
+	}
+
+	// 创建管理员账户
+	hashedPassword, err := utils.HashPassword("admin123") // 默认密码，实际项目中应改为更安全的密码
+	if err != nil {
+		log.Printf("Failed to hash admin password: %v", err)
+		return
+	}
+
+	admin = models.User{
+		Username: "admin",
+		Password: hashedPassword,
+		Role:     "admin",
+	}
+
+	if err := db.Create(&admin).Error; err != nil {
+		log.Printf("Failed to create admin account: %v", err)
+		return
+	}
+
+	log.Println("Admin account created successfully")
+}
+// corsMiddleware 处理跨域请求 - 安全版本
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 限制允许的来源，只允许前端应用的域名
+		origin := c.Request.Header.Get("Origin")
+		allowedOrigins := []string{
+			"http://localhost:5173", // 开发环境前端地址
+			"http://localhost:3000", // http-server静态文件服务地址
+			// 生产环境可以添加实际的域名
+			// "https://your-frontend-domain.com",
+		}
+
+		// 检查请求来源是否在允许列表中
+		for _, allowedOrigin := range allowedOrigins {
+			if origin == allowedOrigin {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				// 只有在指定具体来源时才能启用凭证支持
+				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+				break
+			}
+		}
+
+		// 设置允许的头部
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		// 设置允许的方法
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		// 处理预检请求
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		// 继续处理请求
+		c.Next()
+	}
+}
+
+/* 旧的CORS中间件实现（安全性较低）
 // corsMiddleware 处理跨域请求
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -74,31 +145,4 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-// addTestData 添加测试数据
-func addTestData(db *gorm.DB) {
-	// 检查是否已有测试数据
-	var count int64
-	db.Model(&models.Blog{}).Count(&count)
-	if count > 0 {
-		return
-	}
-
-	// 添加测试数据
-	blogs := []models.Blog{
-		{
-			Title:   "Go语言入门教程",
-			Content: "# Go语言入门教程\n\n## 什么是Go语言\nGo是一种开源的编程语言，它能让构造简单、可靠且高效的软件变得容易。\n\n## 为什么学习Go\n- 高性能\n- 并发支持\n- 简洁的语法\n- 强大的标准库",
-			Author: "张三",
-		},
-		{
-			Title:   "Vue.js 3.0新特性",
-			Content: "# Vue.js 3.0新特性\n\n## Composition API\nComposition API是Vue 3.0中引入的新API，它提供了一种更灵活的方式来组织和重用组件逻辑。\n\n## Teleport\nTeleport允许我们将组件的内容渲染到DOM中的任何位置，非常适合模态框等场景。",
-			Author: "李四",
-		},
-	}
-
-	for _, blog := range blogs {
-		db.Create(&blog)
-	}
-}
+*/

@@ -96,12 +96,22 @@ func (bc *BlogController) GetBlogByID(c *gin.Context) {
 // @Tags 博客文章
 // @Accept json
 // @Produce json
+// @Security ApiKeyAuth
 // @Param blog body models.Blog true "博客文章数据"
 // @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /api/blogs [post]
 func (bc *BlogController) CreateBlog(c *gin.Context) {
+	// 从上下文中获取用户信息
+	_, exists := c.Get("userID")
+	username, usernameExists := c.Get("username")
+	if !exists || !usernameExists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权访问")
+		return
+	}
+
 	// 绑定请求体
 	var blog models.Blog
 	if err := c.ShouldBindJSON(&blog); err != nil {
@@ -114,6 +124,9 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "标题和内容不能为空")
 		return
 	}
+
+	// 设置文章作者
+	blog.Author = username.(string)
 
 	// 创建博客
 	if err := bc.DB.Create(&blog).Error; err != nil {
@@ -131,14 +144,24 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 // @Tags 博客文章
 // @Accept json
 // @Produce json
+// @Security ApiKeyAuth
 // @Param id path int true "博客文章ID"
 // @Param blog body models.Blog true "博客文章更新数据"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /api/blogs/{id} [put]
 func (bc *BlogController) UpdateBlog(c *gin.Context) {
+	// 从上下文中获取用户信息
+	username, usernameExists := c.Get("username")
+	role, roleExists := c.Get("role")
+	if !usernameExists || !roleExists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权访问")
+		return
+	}
+
 	// 获取博客ID
 	id := c.Param("id")
 
@@ -146,6 +169,12 @@ func (bc *BlogController) UpdateBlog(c *gin.Context) {
 	var blog models.Blog
 	if err := bc.DB.First(&blog, id).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "博客不存在")
+		return
+	}
+
+	// 检查权限：只有管理员或文章作者可以更新
+	if role != "admin" && blog.Author != username {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "无权限修改此文章")
 		return
 	}
 
@@ -165,7 +194,7 @@ func (bc *BlogController) UpdateBlog(c *gin.Context) {
 	// 更新博客
 	blog.Title = updateData.Title
 	blog.Content = updateData.Content
-	if updateData.Author != "" {
+	if role == "admin" && updateData.Author != "" {
 		blog.Author = updateData.Author
 	}
 
@@ -184,12 +213,22 @@ func (bc *BlogController) UpdateBlog(c *gin.Context) {
 // @Tags 博客文章
 // @Accept json
 // @Produce json
+// @Security ApiKeyAuth
 // @Param id path int true "博客文章ID"
 // @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /api/blogs/{id} [delete]
 func (bc *BlogController) DeleteBlog(c *gin.Context) {
+	// 从上下文中获取用户信息
+	username, usernameExists := c.Get("username")
+	role, roleExists := c.Get("role")
+	if !usernameExists || !roleExists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未授权访问")
+		return
+	}
+
 	// 获取博客ID
 	id := c.Param("id")
 
@@ -197,6 +236,12 @@ func (bc *BlogController) DeleteBlog(c *gin.Context) {
 	var blog models.Blog
 	if err := bc.DB.First(&blog, id).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "博客不存在")
+		return
+	}
+
+	// 检查权限：只有管理员或文章作者可以删除
+	if role != "admin" && blog.Author != username {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "无权限删除此文章")
 		return
 	}
 

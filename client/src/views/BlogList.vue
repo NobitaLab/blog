@@ -1,15 +1,15 @@
 <template>
   <div class="blog-list">
-    <h1>我的博客</h1>
+    <h1>所有博客</h1>
     <div class="actions">
-      <router-link to="/create" class="create-button">创建新博客</router-link>
+      <router-link v-if="isAuthenticated" to="/create" class="create-button">创建新博客</router-link>
     </div>
     
     <div v-if="loading" class="loading">加载中...</div>
     
     <div v-else-if="error" class="error">{{ error }}</div>
     
-    <div v-else-if="blogs.length === 0" class="empty">暂无博客文章</div>
+    <div v-else-if="blogs.length === 0" class="empty">{{ isAuthenticated ? (isAdmin ? '暂无博客文章' : '您还没有发布任何博客文章') : '暂无博客文章' }}</div>
     
     <div v-else class="blogs-container">
       <div v-for="blog in blogs" :key="blog.id" class="blog-item">
@@ -21,13 +21,22 @@
         </p>
         <p class="excerpt">{{ blog.content.substring(0, 150) }}...</p>
         <div class="blog-actions">
-          <router-link :to="{ name: 'BlogEdit', params: { id: blog.id } }" class="edit-button">编辑</router-link>
-          <button @click="deleteBlog(blog.id)" class="delete-button">删除</button>
-          <!-- 解释：
-            - @click是vue的事件绑定指令（简写形式，等价于 v-on:click），用于给按钮绑定 “点击事件”。当按钮被点击时，会执行 deleteBlog(blog.id) 函数
-            - deleteBlog(blog.id) 是一个自定义的方法，用于删除指定id的博客文章
-            - 这里的 blog.id 是当前循环遍历到的博客文章的id，用于标识要删除的具体文章
-          -->
+          <!-- 只有管理员或文章作者可以编辑 -->
+          <router-link 
+            v-if="canEditOrDelete(blog)" 
+            :to="{ name: 'BlogEdit', params: { id: blog.id } }" 
+            class="edit-button"
+          >
+            编辑
+          </router-link>
+          <!-- 只有管理员或文章作者可以删除 -->
+          <button 
+            v-if="canEditOrDelete(blog)" 
+            @click="deleteBlog(blog.id)" 
+            class="delete-button"
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
@@ -56,9 +65,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { router } from '../main'
-import blogApi from '../services/api'
+import blogApi from '../services/api.js'
 
 const blogs = ref([])
 const loading = ref(false)
@@ -66,6 +75,9 @@ const error = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const isAuthenticated = ref(false)
+const currentUser = ref(null)
+const isAdmin = ref(false)
 
 // 格式化日期
 const formatDate = (dateString) => {
@@ -77,17 +89,72 @@ const formatDate = (dateString) => {
   })
 }
 
-// 获取所有博客文章
+// 检查是否可以编辑或删除博客
+const canEditOrDelete = (blog) => {
+  if (!currentUser.value) return false
+  // 管理员可以编辑或删除所有博客
+  if (isAdmin.value) return true
+  // 普通用户只能编辑或删除自己的博客
+  // 注意：这里假设blog.author是用户名，而currentUser.value.username是当前登录用户的用户名
+  // 如果后端返回的是用户ID，需要相应调整
+  return blog.author === currentUser.value.username
+}
+
+// 检查用户认证状态 - 优化版本
+// 避免与路由守卫重复调用API，优先从localStorage获取用户信息
+const checkUserStatus = () => {
+  // 优先从localStorage获取用户信息
+  const token = localStorage.getItem('token')
+  const userInfoStr = localStorage.getItem('userInfo')
+  
+  if (!token) {
+    // 没有token，直接设置为未认证状态
+    isAuthenticated.value = false
+    currentUser.value = null
+    isAdmin.value = false
+    return
+  }
+  
+  // 有token时，尝试从localStorage获取用户信息
+  if (userInfoStr) {
+    try {
+      const userInfo = JSON.parse(userInfoStr)
+      isAuthenticated.value = true
+      currentUser.value = userInfo
+      isAdmin.value = userInfo.role === 'admin'
+      return
+    } catch (e) {
+      // JSON解析失败，视为认证失败
+      isAuthenticated.value = false
+      currentUser.value = null
+      isAdmin.value = false
+      localStorage.removeItem('userInfo')
+    }
+  }
+  
+  // 如果localStorage中没有用户信息或解析失败，设置为未认证状态
+  // 注意：这里不再主动调用API，而是依赖路由守卫来处理认证逻辑
+  isAuthenticated.value = false
+  currentUser.value = null
+  isAdmin.value = false
+}
+
+// 获取博客文章
 const fetchBlogs = async () => {
   loading.value = true
   error.value = ''
   try {
-    // 调用真实API获取博客列表
-    const response = await blogApi.getAllBlogs({ page: currentPage.value, limit: pageSize.value })
-    blogs.value = response.data
-    total.value = response.total
-    currentPage.value = response.page
-    pageSize.value = response.limit
+    // 检查用户状态（现在是同步函数，不需要await）
+    checkUserStatus()
+    
+    // 根据用户角色决定获取所有博客还是仅获取当前用户的博客
+    // 所有人都可以查看所有文章
+    let response = await blogApi.getAllBlogs({ page: currentPage.value, limit: pageSize.value })
+    
+    blogs.value = response.data || []
+    total.value = response.total || 0
+    currentPage.value = response.page || 1
+    pageSize.value = response.limit || 10
   } catch (err) {
     error.value = '获取博客列表失败'
     console.error('获取博客列表失败:', err)
@@ -109,7 +176,7 @@ const deleteBlog = async (id) => {
       // 提示删除成功
       alert('博客删除成功')
     } catch (err) {
-      alert('删除失败，请重试')
+      alert(err.response?.data?.error || '删除失败，请重试')
       console.error('删除博客失败:', err)
     }
   }

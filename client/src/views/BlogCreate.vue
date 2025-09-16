@@ -25,8 +25,10 @@
           v-model="formData.author"
           type="text"
           placeholder="请输入作者名称"
-          class="form-input"
+          :disabled="authorInputDisabled"
+          :class="['form-input', { disabled: authorInputDisabled }]"
         />
+        <span v-if="authorInputDisabled" class="form-hint">作者名称已根据您的登录信息自动填充</span>
       </div>
       
       <div class="editor-toolbar">
@@ -74,15 +76,17 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
-import blogApi from '../services/api'
+import blogApi from '../services/api.js'
 
 const router = useRouter()
 const loading = ref(false)
 const error = ref('')
 const editorMode = ref('split') // markdown, preview, split
+const currentUser = ref(null)
+const authorInputDisabled = ref(false)
 
 // 表单数据
 const formData = ref({
@@ -104,6 +108,23 @@ const renderedContent = computed(() => {
   return md.render(formData.value.content)
 })
 
+// 检查用户认证状态
+const checkUserStatus = async () => {
+  try {
+    const response = await blogApi.getCurrentUser()
+    if (response.data) {
+      currentUser.value = response.data
+      formData.value.author = response.data.username
+      authorInputDisabled.value = true
+    }
+  } catch (err) {
+    console.error('获取用户信息失败:', err)
+    // 未登录用户可以继续创建博客，但需要手动输入作者名称
+    currentUser.value = null
+    authorInputDisabled.value = false
+  }
+}
+
 // 切换编辑器模式
 const switchEditor = (mode) => {
   editorMode.value = mode
@@ -120,13 +141,17 @@ const createBlog = async () => {
     alert('请输入内容')
     return
   }
+  if (!formData.value.author.trim()) {
+    alert('请输入作者名称')
+    return
+  }
   
   loading.value = true
   error.value = ''
   try {
     const data = {
       title: formData.value.title.trim(),
-      author: formData.value.author.trim() || '匿名',
+      author: formData.value.author.trim(),
       content: formData.value.content.trim()
     }
     
@@ -135,13 +160,18 @@ const createBlog = async () => {
     alert('博客创建成功')
     router.push(`/blog/${response.data.id}`)
   } catch (err) {
-    error.value = '创建博客失败'
+    error.value = err.response?.data?.error || '创建博客失败'
     alert(error.value)
-    console.error(error.value, err)
+    console.error('创建博客失败:', err)
   } finally {
     loading.value = false
   }
 }
+
+// 组件挂载时检查用户状态
+onMounted(() => {
+  checkUserStatus()
+})
 </script>
 
 <style scoped>
@@ -362,5 +392,12 @@ h1 {
 
 .cancel-button:hover {
   background-color: #555;
+}
+
+/* 禁用的输入框样式 */
+.form-input.disabled {
+  background-color: #f5f5f5;
+  color: #666;
+  cursor: not-allowed;
 }
 </style>

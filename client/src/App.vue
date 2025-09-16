@@ -2,26 +2,105 @@
 <template>
   <div class="app"> <!-- 页面根容器 -->
     <header class="app-header">
-      <h1><router-link to="/">我的博客系统</router-link></h1>
-      <!-- 解释：
-        - <h1>是大标题“我的博客系统”
-        - <router-link to="/"> 是Vue里的“链接工具”，类似网页里的<a href="/">，但点击后不会刷新整个页面
-        - to="/" 表示点击后跳转到网站的首页
-      -->
+      <nav class="nav-container">
+        <div class="logo-container">
+          <router-link to="/" class="logo">我的博客系统</router-link>
+        </div>
+        
+        <div class="nav-links">
+          <!-- 公开导航链接 -->
+          <router-link to="/" class="nav-link">首页</router-link>
+          
+          <!-- 登录用户可见的导航链接 -->
+          <router-link v-if="isAuthenticated" to="/create" class="nav-link">写博客</router-link>
+          
+          <!-- 管理员可见的导航链接 -->
+          <router-link v-if="isAdmin" to="/admin" class="nav-link admin-link">管理员面板</router-link>
+          
+          <!-- 用户信息和操作 -->
+          <div v-if="isAuthenticated" class="user-section">
+            <span class="welcome">欢迎, {{ username }}</span>
+            <span class="role-badge" v-if="isAdmin">管理员</span>
+            <button class="logout-button" @click="handleLogout">退出登录</button>
+          </div>
+          
+          <!-- 未登录用户可见的导航链接 -->
+          <div v-else class="auth-links">
+            <router-link to="/login" class="nav-link">登录</router-link>
+            <router-link to="/register" class="nav-link">注册</router-link>
+          </div>
+        </div>
+      </nav>
     </header>
     <main class="app-main">
       <router-view></router-view>
-      <!-- 解释：
-        - 这是Vue里的“内容展示区”，相当于一个“动态窗口”
-        - 当你点击上面的链接（比如首页、文章页），这里会自动显示对应页面的内容
-        - 比如：点击“首页”，这里显示博客列表；点击“某篇文章”，这里显示文章详情
-      -->
     </main>
     <footer class="app-footer">
       <p>&copy; 2024 我的博客系统. 保留所有权利.</p>
     </footer>
   </div>
 </template>
+
+<script>
+import blogApi from './services/api.js'
+
+export default {
+  name: 'App',
+  data() {
+    return {
+      isAuthenticated: false,
+      username: '',
+      isAdmin: false
+    }
+  },
+  mounted() {
+    this.checkUserStatus()
+    // 监听路由变化，更新用户状态
+    this.$router.beforeEach((to, from, next) => {
+      this.checkUserStatus()
+      next()
+    })
+  },
+  methods: {
+    checkUserStatus() {
+      const token = localStorage.getItem('token')
+      const userInfo = localStorage.getItem('userInfo')
+      
+      if (token && userInfo) {
+        try {
+          const user = JSON.parse(userInfo)
+          this.isAuthenticated = true
+          this.username = user.username
+          this.isAdmin = user.role === 'admin'
+        } catch (error) {
+          this.logout()
+        }
+      } else {
+        this.logout()
+      }
+    },
+    
+    async handleLogout() {
+      try {
+        await blogApi.logout()
+      } catch (error) {
+        console.error('注销失败:', error)
+      } finally {
+        this.logout()
+        this.$router.push('/')
+      }
+    },
+    
+    logout() {
+      localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
+      this.isAuthenticated = false
+      this.username = ''
+      this.isAdmin = false
+    }
+  }
+}
+</script>
 
 /* 全局样式 */
 <style>
@@ -47,18 +126,93 @@ body {
 .app-header {
   background-color: #333;
   color: white;
-  padding: 15px 0;
-  text-align: center;
+  padding: 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-.app-header h1 {
-  margin: 0;
+.nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 60px;
+}
+
+.logo-container {
+  flex-shrink: 0;
+}
+
+.logo {
   font-size: 24px;
-}
-
-.app-header a {
+  font-weight: bold;
   color: white;
   text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  color: white;
+  text-decoration: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.nav-link:hover {
+  background-color: #555;
+}
+
+.admin-link {
+  color: #ffd700;
+  font-weight: 500;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.welcome {
+  color: white;
+  font-weight: 500;
+}
+
+.role-badge {
+  background-color: #ffd700;
+  color: #333;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.logout-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s;
+}
+
+.logout-button:hover {
+  background-color: #c82333;
+}
+
+.auth-links {
+  display: flex;
+  gap: 15px;
 }
 
 .app-main {
@@ -76,12 +230,26 @@ body {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .app-header h1 {
-    font-size: 20px;
+  .nav-container {
+    flex-direction: column;
+    height: auto;
+    padding: 15px 20px;
   }
   
-  .app-main {
-    padding: 10px;
+  .nav-links {
+    margin-top: 15px;
+    justify-content: center;
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+  
+  .user-section,
+  .auth-links {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+    text-align: center;
   }
 }
 </style>
