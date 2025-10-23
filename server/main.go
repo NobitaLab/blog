@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"blog/server/config"
+	"blog/server/middlewares"
 	"blog/server/models"
 	"blog/server/routes"
-	"blog/server/middlewares"
 	"blog/server/utils"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -41,9 +42,13 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware())
 
+	// 静态文件服务 - 提供上传的图片访问
+	router.Static("/uploads", "./uploads")
+
 	// 注册路由
 	routes.RegisterBlogRoutes(router, db)
 	routes.RegisterUserRoutes(router, db)
+	routes.RegisterUploadRoutes(router, db)
 
 	// 启动服务器
 	server := &http.Server{
@@ -71,7 +76,7 @@ func initAdminAccount(db *gorm.DB) {
 	}
 
 	// 创建管理员账户
-	hashedPassword, err := utils.HashPassword("admin123") // 默认密码，实际项目中应改为更安全的密码
+	hashedPassword, err := utils.HashPassword("admin@123") // 默认密码，实际项目中应改为更安全的密码
 	if err != nil {
 		log.Printf("Failed to hash admin password: %v", err)
 		return
@@ -90,6 +95,7 @@ func initAdminAccount(db *gorm.DB) {
 
 	log.Println("Admin account created successfully")
 }
+
 // corsMiddleware 处理跨域请求 - 安全版本
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -61,7 +61,7 @@ const routes = [
       requiresAuth: true,
       requiresAdmin: true
     }
-  }
+  },
 ]
 
 const router = createRouter({

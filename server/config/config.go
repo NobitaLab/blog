@@ -27,12 +27,13 @@ func InitConfig() {
 	Config.DB.Host = getEnv("DB_HOST", "127.0.0.1")
 	Config.DB.Port = getEnv("DB_PORT", "3306")
 	Config.DB.User = getEnv("DB_USER", "root")
-	Config.DB.Password = getEnv("DB_PASSWORD", "")
+	Config.DB.Password = getEnv("DB_PASSWORD", "NobitaLab")
 	Config.DB.DBName = getEnv("DB_NAME", "blog")
 }
 
 // InitDB 初始化数据库连接
 func InitDB() (*gorm.DB, error) {
+	// 使用MySQL数据库
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		Config.DB.User,
 		Config.DB.Password,
@@ -40,7 +41,6 @@ func InitDB() (*gorm.DB, error) {
 		Config.DB.Port,
 		Config.DB.DBName,
 	)
-
 	return gorm.Open(mysql.Open(dsn), &gorm.Config{})
 }
 

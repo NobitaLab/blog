@@ -83,7 +83,27 @@ const blogApi = {
   getAllUsers: () => api.get('/admin/users'),
   
   // 更新用户信息
-  updateUser: (id, data) => api.put(`/admin/users/${id}`, data)
+  updateUser: (id, data) => api.put(`/admin/users/${id}`, data),
+  
+  // 图片上传API
+  uploadImage: (formData) => {
+    return api.post('/upload/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 图片删除API
+  deleteImage: (filename) => {
+    return api.post('/upload/image/delete', new URLSearchParams({
+      filename: filename
+    }), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    })
+  }
 }
 
 export default blogApi

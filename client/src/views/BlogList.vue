@@ -200,6 +200,9 @@ h1 {
 
 .actions {
   margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .create-button {
@@ -216,6 +219,7 @@ h1 {
 .create-button:hover {
   background-color: #45a049;
 }
+
 
 .loading, .empty, .error {
   padding: 20px;

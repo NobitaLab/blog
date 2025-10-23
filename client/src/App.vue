@@ -35,9 +35,6 @@
     <main class="app-main">
       <router-view></router-view>
     </main>
-    <footer class="app-footer">
-      <p>&copy; 2024 我的博客系统. 保留所有权利.</p>
-    </footer>
   </div>
 </template>
 
@@ -137,7 +134,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 60px;
+  height: 50px;
 }
 
 .logo-container {
@@ -220,13 +217,6 @@ body {
   padding: 20px;
 }
 
-.app-footer {
-  background-color: #333;
-  color: white;
-  text-align: center;
-  padding: 15px 0;
-  font-size: 14px;
-}
 
 /* 响应式设计 */
 @media (max-width: 768px) {
